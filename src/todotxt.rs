@@ -1,34 +1,21 @@
-use crate::{Task, Todo};
+use crate::{Task, Todo, TodoError};
 use std::io::{Read, Write, Seek};
 use std::str::FromStr;
 use std::string::ToString;
-use std::fmt;
-use std::error::Error;
 
 pub trait TodotxtIO: Read + Write + Seek {}
 impl TodotxtIO for std::fs::File {}
 
-#[derive(Debug)]
-pub struct TaskParseError { }
-
-impl fmt::Display for TaskParseError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str("Error parsing task")
-    }
-}
-
-impl Error for TaskParseError {}
-
 impl FromStr for Task {
-    type Err = TaskParseError;
+    type Err = TodoError;
 
-    fn from_str(s: &str) -> Result<Task, TaskParseError> {
+    fn from_str(s: &str) -> Result<Task, TodoError> {
         if s.is_empty() {
-            return Err(TaskParseError { });
+            return Err(TodoError::new("Cannot parse empty string"));
         }
         let completed = s.starts_with('x');
         let x: &[_] = &['x', ' ', '(' , ')'];
-        let priority = s.trim_matches(x).chars().next().unwrap();
+        let priority = s.trim_matches(x).chars().next().ok_or(TodoError::new("Cannot parse task priority"))?;
         let name = s.trim_start_matches(x).trim_start_matches(char::is_alphabetic).trim_start_matches(x);
 
         let mut project = String::new();
@@ -82,46 +69,53 @@ impl TodoTxt {
         }
     }
 
-    pub fn load(&mut self) {
+    pub fn load(&mut self) -> Result<(), TodoError> {
         let mut content = String::new();
-        self.io.read_to_string(&mut content).unwrap();
+        self.io.read_to_string(&mut content).map_err(|e| TodoError::new(&format!("{}", e)))?;
+
+        if content.is_empty() {
+            return Ok(());
+        }
 
         for line in content.split('\n') {
             if line.starts_with('#') {
                 continue;
             }
-            let task = Task::from_str(line);
-            if let Ok(task) = task {
-                self.tasks.push(task);
-            }
+            let task = Task::from_str(line)?;
+            self.tasks.push(task);
         }
+        Ok(())
     }
 
-    pub fn save(&mut self) {
+    pub fn save(&mut self) -> Result<(), TodoError> {
         let mut content = String::new();
         for task in &self.tasks {
             content.push_str(&format!("{}\n", task.to_string()));
         }
-        self.io.rewind().unwrap();
-        self.io.write_all(content.as_bytes()).unwrap();
-        self.io.flush().unwrap();
+        self.io.rewind().map_err(|e| TodoError::new(&format!("{}", e)))?;
+        self.io.write_all(content.as_bytes()).map_err(|e| TodoError::new(&format!("{}", e)))?;
+        self.io.flush().map_err(|e| TodoError::new(&format!("{}", e)))?;
+        Ok(())
     }
 }
 
 impl Todo for TodoTxt {
-    fn add(&mut self, task: Task) {
-        self.load();
+    type Err = TodoError;
+    fn add(&mut self, task: Task) -> Result<(), TodoError> {
+        self.load()?;
         self.tasks.push(task);
-        self.save();
+        self.save()?;
+        Ok(())
     }
-    fn remove(&mut self, index: usize) {
-        self.load();
+    fn remove(&mut self, index: usize) -> Result<(), TodoError> {
+        self.load()?;
         self.tasks.remove(index);
-        self.save();
+        self.save()?;
+        Ok(())
     }
-    fn list(&mut self) -> Vec<Task> {
-        self.load();
-        self.tasks.clone()
+    fn list(&mut self) -> Result<Vec<Task>, TodoError> {
+        self.load()?;
+        Ok(self.tasks.clone())
     }
 }
 
@@ -185,36 +179,36 @@ mod test {
     fn test_add() {
         let mut todo = TodoTxt::new(Box::new(MockIO::new()));
         let task = Task::new("test".to_string(), "project".to_string(), 'A');
-        todo.add(task);
-        assert_eq!(todo.list().len(), 1);
+        todo.add(task).unwrap();
+        assert_eq!(todo.list().unwrap().len(), 1);
     }
 
     #[test]
     fn test_remove() {
         let mut todo = TodoTxt::new(Box::new(MockIO::new()));
         let task = Task::new("test".to_string(), "project".to_string(), 'A');
-        todo.add(task);
-        todo.remove(0);
-        assert_eq!(todo.list().len(), 0);
+        todo.add(task).unwrap();
+        todo.remove(0).unwrap();
+        assert_eq!(todo.list().unwrap().len(), 0);
     }
 
     #[test]
     fn test_list() {
         let mut todo = TodoTxt::new(Box::new(MockIO::from_string("(A) test +project".to_string())));
-        assert_eq!(todo.list().len(), 1);
+        assert_eq!(todo.list().unwrap().len(), 1);
     }
 
     #[test]
     fn test_list_empty() {
         let mut todo = TodoTxt::new(Box::new(MockIO::new()));
-        assert_eq!(todo.list().len(), 0);
+        assert_eq!(todo.list().unwrap().len(), 0);
     }
 
     #[test]
     fn test_task_from_str_invalid_format() {
         let task = Task::from_str("");
         assert!(task.is_err());
-        assert_eq!(format!("{}", task.err().unwrap()), "Error parsing task");
+        assert_eq!(format!("{}", task.err().unwrap()), "Cannot parse empty string");
     }
 
     #[test]
