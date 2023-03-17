@@ -77,7 +77,7 @@ impl TodoTxt {
             return Ok(());
         }
 
-        for line in content.split('\n') {
+        for line in content.lines() {
             if line.starts_with('#') {
                 continue;
             }
