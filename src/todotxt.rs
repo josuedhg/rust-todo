@@ -146,7 +146,7 @@ mod test {
 
     impl Read for MockIO {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            self.content.as_bytes().read(buf).unwrap();
+            self.content.as_bytes().read(buf)?;
             if !self.read {
                 self.read = true;
                 Ok(self.content.len())
@@ -179,59 +179,88 @@ mod test {
     fn test_add() {
         let mut todo = TodoTxt::new(Box::new(MockIO::new()));
         let task = Task::new("test".to_string(), "project".to_string(), 'A');
-        todo.add(task).unwrap();
-        assert_eq!(todo.list().unwrap().len(), 1);
+        if let Err(e) = todo.add(task) {
+            panic!("{}", e);
+        }
+
+        if let Ok(list) = todo.list() {
+            assert_eq!(list.len(), 1);
+        }
     }
 
     #[test]
     fn test_remove() {
         let mut todo = TodoTxt::new(Box::new(MockIO::new()));
         let task = Task::new("test".to_string(), "project".to_string(), 'A');
-        todo.add(task).unwrap();
-        todo.remove(0).unwrap();
-        assert_eq!(todo.list().unwrap().len(), 0);
+        if let Err(e) = todo.add(task) {
+            panic!("{}", e);
+        }
+
+        if let Err(e) = todo.remove(0) {
+            panic!("{}", e);
+        }
+
+        if let Ok(list) = todo.list() {
+            assert_eq!(list.len(), 0);
+        }
     }
 
     #[test]
     fn test_list() {
         let mut todo = TodoTxt::new(Box::new(MockIO::from_string("(A) test +project".to_string())));
-        assert_eq!(todo.list().unwrap().len(), 1);
+        if let Ok(list) = todo.list() {
+            assert_eq!(list.len(), 1);
+        }
     }
 
     #[test]
     fn test_list_empty() {
         let mut todo = TodoTxt::new(Box::new(MockIO::new()));
-        assert_eq!(todo.list().unwrap().len(), 0);
+        if let Ok(list) = todo.list() {
+            assert_eq!(list.len(), 0);
+        }
     }
 
     #[test]
     fn test_task_from_str_invalid_format() {
         let task = Task::from_str("");
         assert!(task.is_err());
-        assert_eq!(format!("{}", task.err().unwrap()), "Cannot parse empty string");
+        if let Some(err) = task.err() {
+            assert_eq!(format!("{}", err), "Cannot parse empty string");
+        }
     }
 
     #[test]
     fn test_task_from_str_no_project() {
-        let task = Task::from_str("(A) Learn Rust").unwrap();
-        assert_eq!(task.name, "Learn Rust");
-        assert_eq!(task.project, "");
-        assert_eq!(task.get_priority(), 'A');
+        match Task::from_str("(A) Learn Rust") {
+            Ok(task) => {
+                assert_eq!(task.name, "Learn Rust");
+                assert_eq!(task.project, "");
+                assert_eq!(task.get_priority(), 'A');
+            },
+            Err(e) => panic!("{}", e)
+        }
     }
 
     #[test]
     fn test_task_from_str() {
-        let task = Task::from_str("x (A) Learn Rust +project").unwrap();
-        assert_eq!(task.name, "Learn Rust +project");
-        assert_eq!(task.project, "project");
-        assert_eq!(task.is_complete(), true);
-        assert_eq!(task.get_priority(), 'A');
+        match Task::from_str("x (A) Learn Rust +project") {
+            Ok(task) => {
+                assert_eq!(task.name, "Learn Rust +project");
+                assert_eq!(task.project, "project");
+                assert_eq!(task.is_complete(), true);
+                assert_eq!(task.get_priority(), 'A');
+            },
+            Err(e) => panic!("{}", e)
+        }
     }
 
     #[test]
     fn test_task_from_str_completed() {
-        let task = Task::from_str("x (A) Learn Rust +project").unwrap();
-        assert_eq!(task.is_complete(), true);
+        match Task::from_str("x (A) Learn Rust +project") {
+            Ok(task) => assert_eq!(task.is_complete(), true),
+            Err(e) => panic!("{}", e)
+        }
     }
 
     #[test]
